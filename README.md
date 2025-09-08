@@ -1,6 +1,8 @@
 # PyQt Elasticsearch Viewer
 Elasticsearch ES可视化客户端工具
 
+[下载地址](https://pan.quark.cn/s/ed38a68328eb)
+
 *A simple, lightweight, cross-platform desktop GUI for browsing and managing Elasticsearch clusters.*
 
 This tool is a self-contained desktop application built with Python and PyQt6. It provides a user-friendly interface for performing common Elasticsearch operations like searching, creating, reading, updating, and deleting documents. It is designed to be minimal and portable, relying only on the `requests` library for communication with Elasticsearch, with no dependency on the official `elasticsearch-py` client.
