@@ -3,6 +3,10 @@
 
 name: Publish Python Package to PyPI
 
+permissions:
+  id-token: write
+  contents: read
+
 on:
   release:
     types: [published]
