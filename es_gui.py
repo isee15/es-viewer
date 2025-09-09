@@ -986,8 +986,11 @@ class ElasticsearchViewer(QMainWindow):
             use_index=query_data["use_index"]
         )
 
-if __name__ == '__main__':
+def main():
     app = QApplication(sys.argv)
     viewer = ElasticsearchViewer()
     viewer.show()
     sys.exit(app.exec())
+
+if __name__ == '__main__':
+    main()
