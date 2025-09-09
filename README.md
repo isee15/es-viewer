@@ -41,8 +41,8 @@ To get started, you need Python 3 and pip installed on your system.
 
 1.  **Clone the repository:**
     ```bash
-    git clone <your-repository-url>
-    cd <your-repository-name>
+    git clone https://github.com/isee15/es-viewer
+    cd es-viewer
     ```
     Alternatively, just download the main Python script (`es_tool_final_corrected_copy.py` or your preferred name).
 
@@ -65,9 +65,8 @@ To get started, you need Python 3 and pip installed on your system.
 
 1.  **Run the application:**
     ```bash
-    python es_tool_final_corrected_copy.py
+    python es_gui.py
     ```
-    (It is recommended to rename the script to something simpler, like `main.py`.)
 
 2.  **Connection Panel:**
     * Fill in the `Host`, `Port`, and target `Index`.
