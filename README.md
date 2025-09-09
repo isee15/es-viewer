@@ -37,26 +37,38 @@ This tool is a self-contained desktop application built with Python and PyQt6. I
 
 ## 🛠️ Installation
 
-To get started, you need Python 3 and pip installed on your system.
+You can install `es-viewer` directly from PyPI.
+
+1.  **Install with pip:**
+    Make sure you have Python 3 and pip installed, then run:
+    ```bash
+    pip install es-viewer
+    ```
+
+2.  **Run the application:**
+    After installation, you can run the application from your terminal:
+    ```bash
+    es-viewer
+    ```
+
+### Alternative: Running from Source
+
+If you prefer to run the application directly from the source code:
 
 1.  **Clone the repository:**
     ```bash
     git clone https://github.com/isee15/es-viewer
     cd es-viewer
     ```
-    Alternatively, just download the main Python script (`es_tool_final_corrected_copy.py` or your preferred name).
 
-2.  **Create a `requirements.txt` file:**
-    Create a file named `requirements.txt` in the same directory with the following content:
-    ```txt
-    PyQt6
-    requests
+2.  **Install dependencies:**
+    ```bash
+    pip install PyQt6 requests
     ```
 
-3.  **Install dependencies:**
-    Open your terminal or command prompt in the project directory and run:
+3.  **Run the application:**
     ```bash
-    pip install -r requirements.txt
+    python es_gui.py
     ```
 
 ---
@@ -64,9 +76,7 @@ To get started, you need Python 3 and pip installed on your system.
 ## 🚀 Usage
 
 1.  **Run the application:**
-    ```bash
-    python es_gui.py
-    ```
+    If you installed via pip, run `es-viewer` in your terminal. If running from source, use `python es_gui.py`.
 
 2.  **Connection Panel:**
     * Fill in the `Host`, `Port`, and target `Index`.
