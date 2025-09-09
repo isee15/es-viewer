@@ -116,7 +116,7 @@ class ElasticsearchViewer(QMainWindow):
 
     def init_ui(self):
         """Initializes the user interface."""
-        self.setWindowTitle('ES Viewer v1.0')
+        self.setWindowTitle('ES Viewer v1.0(by isee15)')
         self.setGeometry(100, 100, 1280, 720)
         self.setMinimumSize(1024, 600)
         
@@ -162,44 +162,45 @@ class ElasticsearchViewer(QMainWindow):
         
         self.tabs = QTabWidget()
         self.tab_search = QWidget()
-        self.tab_crud = QWidget()
-        self.tab_quick_query = QWidget()
-        self.tab_custom = QWidget()
+        self.tab_document_editor = QWidget()
         self.tab_create_index = QWidget()
-        self.tabs.addTab(self.tab_search, "Search")
-        self.tabs.addTab(self.tab_crud, "Document CRUD")
-        self.tabs.addTab(self.tab_quick_query, "Quick Query")
-        self.tabs.addTab(self.tab_custom, "Custom HTTP Request")
-        self.tabs.addTab(self.tab_create_index, "Create Index")
+        self.tab_api_console = QWidget()
+
+        self.tabs.addTab(self.tab_search, "🔍 Search")
+        self.tabs.addTab(self.tab_document_editor, "📝 Document Editor")
+        self.tabs.addTab(self.tab_create_index, "➕ Create Index")
+        self.tabs.addTab(self.tab_api_console, "🚀 API Console")
         
+        # ================= Search Tab =================
         search_layout = QVBoxLayout(self.tab_search)
-        search_layout.setContentsMargins(0, 5, 0, 0)
-        search_layout.addWidget(QLabel("Search Request Body (Query DSL JSON):"))
+        search_layout.setContentsMargins(10, 10, 10, 10)
+        search_layout.addWidget(QLabel("<b>Query DSL</b>"))
         self.query_input = QTextEdit()
         self.query_input.setFont(QFont("Courier", 10))
         self.query_input.setMinimumHeight(100)
         search_layout.addWidget(self.query_input)
-        self.execute_search_button = QPushButton('Execute Search')
+        self.execute_search_button = QPushButton('Search')
         self.execute_search_button.setSizePolicy(self.execute_search_button.sizePolicy().horizontalPolicy(), QSizePolicy.Policy.Fixed)
         self.execute_search_button.clicked.connect(self.execute_search)
-        search_layout.addWidget(self.execute_search_button)
+        search_layout.addWidget(self.execute_search_button, 0, Qt.AlignmentFlag.AlignRight)
 
-        crud_layout = QVBoxLayout(self.tab_crud)
-        crud_layout.setContentsMargins(0, 5, 0, 0)
+        # ================= Document Editor Tab =================
+        crud_layout = QVBoxLayout(self.tab_document_editor)
+        crud_layout.setContentsMargins(10, 10, 10, 10)
         crud_form_layout = QFormLayout()
         self.doc_id_input = QLineEdit()
-        self.doc_id_input.setPlaceholderText("ID is required for Get, Index(PUT), Update, Delete")
+        self.doc_id_input.setPlaceholderText("Optional for Create, required for others")
         crud_form_layout.addRow("Document ID:", self.doc_id_input)
         crud_layout.addLayout(crud_form_layout)
-        crud_layout.addWidget(QLabel("Document Body / Update Payload:"))
+        crud_layout.addWidget(QLabel("<b>Document Source</b>"))
         self.doc_body_input = QTextEdit()
         self.doc_body_input.setFont(QFont("Courier", 10))
         self.doc_body_input.setMinimumHeight(100)
         crud_layout.addWidget(self.doc_body_input)
         button_layout = QHBoxLayout()
         self.get_button = QPushButton("Get")
-        self.index_button = QPushButton("Index/Create")
-        self.update_button = QPushButton("Update")
+        self.index_button = QPushButton("Create/Update")
+        self.update_button = QPushButton("Partial Update")
         self.delete_button = QPushButton("Delete")
         button_layout.addWidget(self.get_button); button_layout.addWidget(self.index_button)
         button_layout.addWidget(self.update_button); button_layout.addWidget(self.delete_button)
@@ -212,10 +213,16 @@ class ElasticsearchViewer(QMainWindow):
         self.update_button.clicked.connect(self.execute_update)
         self.delete_button.clicked.connect(self.execute_delete)
 
-        # Quick Query Tab
-        quick_query_layout = QVBoxLayout(self.tab_quick_query)
-        quick_query_layout.setContentsMargins(0, 5, 0, 0)
-        quick_query_layout.addWidget(QLabel("Select a query to execute:"))
+        # ================= API Console Tab =================
+        api_console_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.tab_api_console.setLayout(QVBoxLayout())
+        self.tab_api_console.layout().addWidget(api_console_splitter)
+
+        # Common APIs section
+        common_api_widget = QWidget()
+        quick_query_layout = QVBoxLayout(common_api_widget)
+        quick_query_layout.setContentsMargins(5, 5, 5, 5)
+        quick_query_layout.addWidget(QLabel("<b>Common APIs</b> (Double-click to run)"))
         
         self.quick_query_tree = QTreeView()
         self.quick_query_tree.setHeaderHidden(True)
@@ -226,38 +233,40 @@ class ElasticsearchViewer(QMainWindow):
         self.quick_query_tree.doubleClicked.connect(self.execute_quick_query)
         
         quick_query_layout.addWidget(self.quick_query_tree)
+        api_console_splitter.addWidget(common_api_widget)
 
-        # Custom HTTP Request Tab
-        custom_layout = QVBoxLayout(self.tab_custom)
-        custom_layout.setContentsMargins(0, 5, 0, 0)
-        custom_layout.addWidget(QLabel("Custom HTTP Request - Execute any HTTP method with custom endpoint:"))
+        # Custom Request section
+        custom_request_widget = QWidget()
+        custom_layout = QVBoxLayout(custom_request_widget)
+        custom_layout.setContentsMargins(5, 10, 5, 5)
+        custom_layout.addWidget(QLabel("<b>Custom Request</b>"))
         
-        # HTTP Method and Endpoint
         custom_form_layout = QFormLayout()
         self.http_method_combo = QComboBox()
         self.http_method_combo.addItems(["GET", "POST", "PUT", "DELETE", "HEAD", "PATCH"])
         self.http_endpoint_input = QLineEdit()
-        self.http_endpoint_input.setPlaceholderText("e.g., _cat/indices, my-index/_doc/1, _cluster/health")
-        custom_form_layout.addRow("HTTP Method:", self.http_method_combo)
+        self.http_endpoint_input.setPlaceholderText("e.g., _cat/nodes, my-index/_search")
+        custom_form_layout.addRow("Method:", self.http_method_combo)
         custom_form_layout.addRow("Endpoint:", self.http_endpoint_input)
         custom_layout.addLayout(custom_form_layout)
         
-        custom_layout.addWidget(QLabel("Request Body (JSON, optional for GET requests):"))
+        custom_layout.addWidget(QLabel("Request Body (JSON):"))
         self.custom_body_input = QTextEdit()
         self.custom_body_input.setFont(QFont("Courier", 10))
-        self.custom_body_input.setMinimumHeight(100)
         self.custom_body_input.setPlaceholderText('{"query": {"match_all": {}}}')
         custom_layout.addWidget(self.custom_body_input)
         
-        self.execute_custom_button = QPushButton('Execute Custom Request')
+        self.execute_custom_button = QPushButton('Execute')
         self.execute_custom_button.setSizePolicy(self.execute_custom_button.sizePolicy().horizontalPolicy(), QSizePolicy.Policy.Fixed)
         self.execute_custom_button.clicked.connect(self.execute_custom_request)
-        custom_layout.addWidget(self.execute_custom_button)
+        custom_layout.addWidget(self.execute_custom_button, 0, Qt.AlignmentFlag.AlignRight)
+        api_console_splitter.addWidget(custom_request_widget)
+        api_console_splitter.setSizes([250, 250])
 
-        # Create Index Tab
+
+        # ================= Create Index Tab =================
         create_index_layout = QVBoxLayout(self.tab_create_index)
-        create_index_layout.setContentsMargins(0, 5, 0, 0)
-        create_index_layout.addWidget(QLabel("Create New Index - Configure index settings, mappings, and aliases:"))
+        create_index_layout.setContentsMargins(10, 10, 10, 10)
         
         # Basic Index Configuration
         basic_config_section = QWidget()
@@ -266,26 +275,26 @@ class ElasticsearchViewer(QMainWindow):
         
         self.new_index_name_input = QLineEdit()
         self.new_index_name_input.setPlaceholderText("e.g., my-new-index")
-        basic_config_layout.addRow("📝 Index Name:", self.new_index_name_input)
+        basic_config_layout.addRow("Index Name:", self.new_index_name_input)
         
-        self.shards_input = QLineEdit()
-        self.shards_input.setText("1")
-        self.shards_input.setPlaceholderText("Number of primary shards")
-        basic_config_layout.addRow("🔢 Primary Shards:", self.shards_input)
-        
-        self.replicas_input = QLineEdit()
-        self.replicas_input.setText("1")
-        self.replicas_input.setPlaceholderText("Number of replica shards")
-        basic_config_layout.addRow("📋 Replica Shards:", self.replicas_input)
+        shards_replicas_layout = QHBoxLayout()
+        self.shards_input = QLineEdit("1")
+        self.replicas_input = QLineEdit("1")
+        shards_replicas_layout.addWidget(QLabel("Shards:"))
+        shards_replicas_layout.addWidget(self.shards_input)
+        shards_replicas_layout.addWidget(QLabel("Replicas:"))
+        shards_replicas_layout.addWidget(self.replicas_input)
+        basic_config_layout.addRow("Configuration:", shards_replicas_layout)
         
         create_index_layout.addWidget(basic_config_section)
         
-        # Index Settings Section
-        settings_section = QWidget()
-        settings_section_layout = QVBoxLayout(settings_section)
-        settings_section.setStyleSheet("QWidget { border: 1px solid #ccc; border-radius: 5px; padding: 10px; }")
-        settings_section_layout.addWidget(QLabel("⚙️ Index Settings (JSON):"))
+        # Index Settings, Mappings, Aliases in a new Tab widget
+        create_index_tabs = QTabWidget()
         
+        # Settings Tab
+        settings_tab = QWidget()
+        settings_section_layout = QVBoxLayout(settings_tab)
+        settings_section_layout.addWidget(QLabel("Define advanced index settings (e.g., analysis, refresh_interval)."))
         self.index_settings_input = QTextEdit()
         self.index_settings_input.setFont(QFont("Courier", 10))
         default_settings = {
@@ -299,51 +308,38 @@ class ElasticsearchViewer(QMainWindow):
         }
         self.index_settings_input.setPlainText(json.dumps(default_settings, indent=2))
         settings_section_layout.addWidget(self.index_settings_input)
-        create_index_layout.addWidget(settings_section)
-        
-        # Index Mappings Section
-        mappings_section = QWidget()
-        mappings_section_layout = QVBoxLayout(mappings_section)
-        mappings_section.setStyleSheet("QWidget { border: 1px solid #ccc; border-radius: 5px; padding: 10px; }")
-        mappings_section_layout.addWidget(QLabel("🗺️ Index Mappings (JSON):"))
-        
+        create_index_tabs.addTab(settings_tab, "⚙️ Settings")
+
+        # Mappings Tab
+        mappings_tab = QWidget()
+        mappings_section_layout = QVBoxLayout(mappings_tab)
+        mappings_section_layout.addWidget(QLabel("Define the schema for the index."))
         self.index_mappings_input = QTextEdit()
         self.index_mappings_input.setFont(QFont("Courier", 10))
         default_mappings = {
             "properties": {
-                "title": {
-                    "type": "text",
-                    "analyzer": "standard"
-                },
-                "content": {
-                    "type": "text"
-                },
-                "created_at": {
-                    "type": "date"
-                },
-                "tags": {
-                    "type": "keyword"
-                }
+                "title": {"type": "text"},
+                "content": {"type": "text"},
+                "created_at": {"type": "date"},
+                "tags": {"type": "keyword"}
             }
         }
         self.index_mappings_input.setPlainText(json.dumps(default_mappings, indent=2))
         mappings_section_layout.addWidget(self.index_mappings_input)
-        create_index_layout.addWidget(mappings_section)
-        
-        # Index Aliases Section
-        aliases_section = QWidget()
-        aliases_section_layout = QVBoxLayout(aliases_section)
-        aliases_section.setStyleSheet("QWidget { border: 1px solid #ccc; border-radius: 5px; padding: 10px; }")
-        aliases_section_layout.addWidget(QLabel("🔗 Index Aliases (JSON, optional):"))
-        
+        create_index_tabs.addTab(mappings_tab, "🗺️ Mappings")
+
+        # Aliases Tab
+        aliases_tab = QWidget()
+        aliases_section_layout = QVBoxLayout(aliases_tab)
+        aliases_section_layout.addWidget(QLabel("Define aliases for this index."))
         self.index_aliases_input = QTextEdit()
         self.index_aliases_input.setFont(QFont("Courier", 10))
-        default_aliases = {
-            "my-alias": {}
-        }
+        default_aliases = {"my-alias": {}}
         self.index_aliases_input.setPlaceholderText(json.dumps(default_aliases, indent=2))
         aliases_section_layout.addWidget(self.index_aliases_input)
-        create_index_layout.addWidget(aliases_section)
+        create_index_tabs.addTab(aliases_tab, "🔗 Aliases")
+
+        create_index_layout.addWidget(create_index_tabs)
         
         # Action Buttons
         create_buttons_layout = QHBoxLayout()
@@ -352,11 +348,11 @@ class ElasticsearchViewer(QMainWindow):
         self.load_template_button.setToolTip('Load a predefined index template')
         self.load_template_button.clicked.connect(self.load_index_template)
         
-        self.validate_config_button = QPushButton('✅ Validate Config')
+        self.validate_config_button = QPushButton('✅ Validate')
         self.validate_config_button.setToolTip('Validate JSON configuration without creating the index')
         self.validate_config_button.clicked.connect(self.validate_index_config)
         
-        self.create_index_button = QPushButton('🚀 Create Index')
+        self.create_index_button = QPushButton('Create Index')
         self.create_index_button.setToolTip('Create the index with specified configuration')
         self.create_index_button.clicked.connect(self.execute_create_index)
         self.create_index_button.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; font-weight: bold; }")
@@ -399,7 +395,7 @@ class ElasticsearchViewer(QMainWindow):
         
         main_splitter.addWidget(self.tabs)
         main_splitter.addWidget(results_widget)
-        main_splitter.setSizes([500, 780])
+        main_splitter.setSizes([550, 730])
         main_layout.addWidget(main_splitter)
         
         self.status_bar = QStatusBar()
@@ -523,17 +519,21 @@ class ElasticsearchViewer(QMainWindow):
         if not all([client, index]): QMessageBox.warning(self, 'Input Error', 'Host, Port, and Index are required.'); return
         try:
             doc_body = json.loads(self.doc_body_input.toPlainText())
-            self.status_bar.showMessage(f"Indexing document in '{index}'..."); response = client.index_document(index, doc_body, doc_id)
+            op_type = "Create" if doc_id is None else "Update"
+            self.status_bar.showMessage(f"{op_type} document in '{index}'..."); response = client.index_document(index, doc_body, doc_id)
             self.populate_tree(response)
             if response.get("_id"): self.doc_id_input.setText(response["_id"])
-            self.status_bar.showMessage(f"Index operation successful.", 5000)
+            self.status_bar.showMessage(f"Document {op_type.lower()}d successfully.", 5000)
         except json.JSONDecodeError as e: QMessageBox.critical(self, 'JSON Error', f'Invalid JSON in document body:\n{e}')
         except SimpleEsClientError as e: QMessageBox.critical(self, 'Client Error', str(e))
     def execute_update(self):
         client = self._get_client(); index = self.index_input.text().strip(); doc_id = self.doc_id_input.text().strip()
-        if not all([client, index, doc_id]): QMessageBox.warning(self, 'Input Error', 'Host, Port, Index and Document ID are required.'); return
+        if not all([client, index, doc_id]): QMessageBox.warning(self, 'Input Error', 'Host, Port, Index and Document ID are required for partial update.'); return
         try:
             payload = json.loads(self.doc_body_input.toPlainText())
+            if "doc" not in payload:
+                QMessageBox.warning(self, 'Payload Error', 'Partial update payload must be wrapped in a "doc" object.')
+                return
             self.status_bar.showMessage(f"Updating document '{doc_id}'..."); response = client.update_document(index, doc_id, payload)
             self.populate_tree(response); self.status_bar.showMessage(f"Update operation successful.", 5000)
         except json.JSONDecodeError as e: QMessageBox.critical(self, 'JSON Error', f'Invalid JSON in update payload:\n{e}')
@@ -921,9 +921,10 @@ class ElasticsearchViewer(QMainWindow):
         root_item.appendRow(cluster_category)
         
         queries_cluster = {
-            "Health": {"endpoint": "_cluster/health", "method": "GET", "use_index": False},
-            "Stats": {"endpoint": "_cluster/stats", "method": "GET", "use_index": False},
-            "Settings": {"endpoint": "_cluster/settings", "method": "GET", "use_index": False},
+            "Cluster Health": {"endpoint": "_cluster/health", "method": "GET", "use_index": False},
+            "Cluster Stats": {"endpoint": "_cluster/stats", "method": "GET", "use_index": False},
+            "Node Stats": {"endpoint": "_nodes/stats", "method": "GET", "use_index": False},
+            "List Nodes": {"endpoint": "_cat/nodes?v", "method": "GET", "use_index": False},
             "Pending Tasks": {"endpoint": "_cluster/pending_tasks", "method": "GET", "use_index": False},
         }
         for name, data in queries_cluster.items():
@@ -939,7 +940,7 @@ class ElasticsearchViewer(QMainWindow):
         root_item.appendRow(index_category)
 
         queries_indices = {
-            "List Indices (cat)": {"endpoint": "_cat/indices?v&s=index", "method": "GET", "use_index": False},
+            "List All Indices": {"endpoint": "_cat/indices?v&s=index", "method": "GET", "use_index": False},
             "List All Mappings": {"endpoint": "_mapping", "method": "GET", "use_index": False},
             "List All Settings": {"endpoint": "_settings", "method": "GET", "use_index": False},
             "List All Aliases": {"endpoint": "_aliases", "method": "GET", "use_index": False},
@@ -959,13 +960,13 @@ class ElasticsearchViewer(QMainWindow):
         queries_current_index = {
             "Get Mapping": {"endpoint": "_mapping", "method": "GET", "use_index": True},
             "Get Settings": {"endpoint": "_settings", "method": "GET", "use_index": True},
-            "Stats": {"endpoint": "_stats", "method": "GET", "use_index": True},
-            "Check Exists": {"endpoint": "", "method": "HEAD", "use_index": True},
+            "Get Stats": {"endpoint": "_stats", "method": "GET", "use_index": True},
+            "Check if Exists": {"endpoint": "", "method": "HEAD", "use_index": True},
             "Open Index": {"endpoint": "_open", "method": "POST", "use_index": True},
             "Close Index": {"endpoint": "_close", "method": "POST", "use_index": True},
             "Refresh Index": {"endpoint": "_refresh", "method": "POST", "use_index": True},
             "Force Merge": {"endpoint": "_forcemerge", "method": "POST", "use_index": True},
-            "Cache Clear": {"endpoint": "_cache/clear", "method": "POST", "use_index": True},
+            "Clear Cache": {"endpoint": "_cache/clear", "method": "POST", "use_index": True},
         }
         for name, data in queries_current_index.items():
             item = QStandardItem(name)
