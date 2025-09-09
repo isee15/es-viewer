@@ -20,7 +20,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QTextEdit, QTreeView, QSplitter,
-    QStatusBar, QMessageBox, QCheckBox, QFormLayout, QTabWidget, QMenu
+    QStatusBar, QMessageBox, QCheckBox, QFormLayout, QTabWidget, QMenu, QComboBox, QSizePolicy
 )
 from PyQt6.QtGui import QStandardItemModel, QStandardItem, QFont, QKeySequence, QAction, QShortcut
 from PyQt6.QtCore import Qt
@@ -59,13 +59,25 @@ class SimpleEsClient:
             response.raise_for_status()
             if response.status_code == 204 or not response.content:
                  return {"acknowledged": True, "status": response.status_code, "operation": method}
-            return response.json()
+            
+            # Handle _cat API endpoints that return plain text
+            if '_cat/' in endpoint:
+                return {"text_response": response.text, "endpoint": endpoint, "status": response.status_code}
+            
+            # Try to parse as JSON, fallback to text if it fails
+            try:
+                return response.json()
+            except json.JSONDecodeError:
+                # If JSON parsing fails, return as text response
+                return {"text_response": response.text, "endpoint": endpoint, "status": response.status_code}
+                
         except requests.exceptions.HTTPError as e:
             error_details = f"HTTP Error: {e.response.status_code} {e.response.reason}"
             try:
                 es_error_body = e.response.json()
                 error_details += f"\nDetails: {json.dumps(es_error_body)}"
-            except json.JSONDecodeError: error_details += f"\nResponse Body: {e.response.text}"
+            except json.JSONDecodeError: 
+                error_details += f"\nResponse Body: {e.response.text}"
             raise SimpleEsClientError(error_details) from e
         except requests.exceptions.SSLError as e:
             raise SimpleEsClientError(f"SSL Error: Could not verify certificate. Try unchecking 'Verify SSL Certificate'.\nDetails: {e}") from e
@@ -75,6 +87,13 @@ class SimpleEsClient:
     def info(self): return self._make_request("GET", "")
     def search(self, index: str, query: dict): return self._make_request("POST", f"{index}/_search", json=query)
     def get_document(self, index: str, doc_id: str): return self._make_request("GET", f"{index}/_doc/{doc_id}")
+    def get_mapping(self, index: str): return self._make_request("GET", f"{index}/_mapping")
+    def custom_request(self, method: str, endpoint: str, body: dict = None):
+        """Execute a custom HTTP request with any method and endpoint"""
+        if body:
+            return self._make_request(method.upper(), endpoint, json=body)
+        else:
+            return self._make_request(method.upper(), endpoint)
     def index_document(self, index: str, document: dict, doc_id: str = None):
         if doc_id: return self._make_request("PUT", f"{index}/_doc/{doc_id}", json=document)
         else: return self._make_request("POST", f"{index}/_doc", json=document)
@@ -98,7 +117,8 @@ class ElasticsearchViewer(QMainWindow):
     def init_ui(self):
         """Initializes the user interface."""
         self.setWindowTitle('ES Viewer v1.0')
-        self.setGeometry(100, 100, 1200, 800)
+        self.setGeometry(100, 100, 1280, 720)
+        self.setMinimumSize(1024, 600)
         
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -138,21 +158,29 @@ class ElasticsearchViewer(QMainWindow):
 
         main_layout.addWidget(connection_group)
         
-        main_splitter = QSplitter(Qt.Orientation.Vertical)
+        main_splitter = QSplitter(Qt.Orientation.Horizontal)
         
         self.tabs = QTabWidget()
         self.tab_search = QWidget()
         self.tab_crud = QWidget()
+        self.tab_quick_query = QWidget()
+        self.tab_custom = QWidget()
+        self.tab_create_index = QWidget()
         self.tabs.addTab(self.tab_search, "Search")
         self.tabs.addTab(self.tab_crud, "Document CRUD")
+        self.tabs.addTab(self.tab_quick_query, "Quick Query")
+        self.tabs.addTab(self.tab_custom, "Custom HTTP Request")
+        self.tabs.addTab(self.tab_create_index, "Create Index")
         
         search_layout = QVBoxLayout(self.tab_search)
         search_layout.setContentsMargins(0, 5, 0, 0)
         search_layout.addWidget(QLabel("Search Request Body (Query DSL JSON):"))
         self.query_input = QTextEdit()
         self.query_input.setFont(QFont("Courier", 10))
+        self.query_input.setMinimumHeight(100)
         search_layout.addWidget(self.query_input)
         self.execute_search_button = QPushButton('Execute Search')
+        self.execute_search_button.setSizePolicy(self.execute_search_button.sizePolicy().horizontalPolicy(), QSizePolicy.Policy.Fixed)
         self.execute_search_button.clicked.connect(self.execute_search)
         search_layout.addWidget(self.execute_search_button)
 
@@ -166,6 +194,7 @@ class ElasticsearchViewer(QMainWindow):
         crud_layout.addWidget(QLabel("Document Body / Update Payload:"))
         self.doc_body_input = QTextEdit()
         self.doc_body_input.setFont(QFont("Courier", 10))
+        self.doc_body_input.setMinimumHeight(100)
         crud_layout.addWidget(self.doc_body_input)
         button_layout = QHBoxLayout()
         self.get_button = QPushButton("Get")
@@ -174,6 +203,8 @@ class ElasticsearchViewer(QMainWindow):
         self.delete_button = QPushButton("Delete")
         button_layout.addWidget(self.get_button); button_layout.addWidget(self.index_button)
         button_layout.addWidget(self.update_button); button_layout.addWidget(self.delete_button)
+        for button in [self.get_button, self.index_button, self.update_button, self.delete_button]:
+            button.setSizePolicy(button.sizePolicy().horizontalPolicy(), QSizePolicy.Policy.Fixed)
         crud_layout.addLayout(button_layout)
         
         self.get_button.clicked.connect(self.execute_get)
@@ -181,16 +212,194 @@ class ElasticsearchViewer(QMainWindow):
         self.update_button.clicked.connect(self.execute_update)
         self.delete_button.clicked.connect(self.execute_delete)
 
+        # Quick Query Tab
+        quick_query_layout = QVBoxLayout(self.tab_quick_query)
+        quick_query_layout.setContentsMargins(0, 5, 0, 0)
+        quick_query_layout.addWidget(QLabel("Select a query to execute:"))
+        
+        self.quick_query_tree = QTreeView()
+        self.quick_query_tree.setHeaderHidden(True)
+        quick_query_model = QStandardItemModel()
+        self.quick_query_tree.setModel(quick_query_model)
+        self.populate_quick_query_tree(quick_query_model)
+        self.quick_query_tree.expandAll()
+        self.quick_query_tree.doubleClicked.connect(self.execute_quick_query)
+        
+        quick_query_layout.addWidget(self.quick_query_tree)
+
+        # Custom HTTP Request Tab
+        custom_layout = QVBoxLayout(self.tab_custom)
+        custom_layout.setContentsMargins(0, 5, 0, 0)
+        custom_layout.addWidget(QLabel("Custom HTTP Request - Execute any HTTP method with custom endpoint:"))
+        
+        # HTTP Method and Endpoint
+        custom_form_layout = QFormLayout()
+        self.http_method_combo = QComboBox()
+        self.http_method_combo.addItems(["GET", "POST", "PUT", "DELETE", "HEAD", "PATCH"])
+        self.http_endpoint_input = QLineEdit()
+        self.http_endpoint_input.setPlaceholderText("e.g., _cat/indices, my-index/_doc/1, _cluster/health")
+        custom_form_layout.addRow("HTTP Method:", self.http_method_combo)
+        custom_form_layout.addRow("Endpoint:", self.http_endpoint_input)
+        custom_layout.addLayout(custom_form_layout)
+        
+        custom_layout.addWidget(QLabel("Request Body (JSON, optional for GET requests):"))
+        self.custom_body_input = QTextEdit()
+        self.custom_body_input.setFont(QFont("Courier", 10))
+        self.custom_body_input.setMinimumHeight(100)
+        self.custom_body_input.setPlaceholderText('{"query": {"match_all": {}}}')
+        custom_layout.addWidget(self.custom_body_input)
+        
+        self.execute_custom_button = QPushButton('Execute Custom Request')
+        self.execute_custom_button.setSizePolicy(self.execute_custom_button.sizePolicy().horizontalPolicy(), QSizePolicy.Policy.Fixed)
+        self.execute_custom_button.clicked.connect(self.execute_custom_request)
+        custom_layout.addWidget(self.execute_custom_button)
+
+        # Create Index Tab
+        create_index_layout = QVBoxLayout(self.tab_create_index)
+        create_index_layout.setContentsMargins(0, 5, 0, 0)
+        create_index_layout.addWidget(QLabel("Create New Index - Configure index settings, mappings, and aliases:"))
+        
+        # Basic Index Configuration
+        basic_config_section = QWidget()
+        basic_config_layout = QFormLayout(basic_config_section)
+        basic_config_section.setStyleSheet("QWidget { border: 1px solid #ccc; border-radius: 5px; padding: 10px; }")
+        
+        self.new_index_name_input = QLineEdit()
+        self.new_index_name_input.setPlaceholderText("e.g., my-new-index")
+        basic_config_layout.addRow("📝 Index Name:", self.new_index_name_input)
+        
+        self.shards_input = QLineEdit()
+        self.shards_input.setText("1")
+        self.shards_input.setPlaceholderText("Number of primary shards")
+        basic_config_layout.addRow("🔢 Primary Shards:", self.shards_input)
+        
+        self.replicas_input = QLineEdit()
+        self.replicas_input.setText("1")
+        self.replicas_input.setPlaceholderText("Number of replica shards")
+        basic_config_layout.addRow("📋 Replica Shards:", self.replicas_input)
+        
+        create_index_layout.addWidget(basic_config_section)
+        
+        # Index Settings Section
+        settings_section = QWidget()
+        settings_section_layout = QVBoxLayout(settings_section)
+        settings_section.setStyleSheet("QWidget { border: 1px solid #ccc; border-radius: 5px; padding: 10px; }")
+        settings_section_layout.addWidget(QLabel("⚙️ Index Settings (JSON):"))
+        
+        self.index_settings_input = QTextEdit()
+        self.index_settings_input.setFont(QFont("Courier", 10))
+        default_settings = {
+            "analysis": {
+                "analyzer": {
+                    "default": {
+                        "type": "standard"
+                    }
+                }
+            }
+        }
+        self.index_settings_input.setPlainText(json.dumps(default_settings, indent=2))
+        settings_section_layout.addWidget(self.index_settings_input)
+        create_index_layout.addWidget(settings_section)
+        
+        # Index Mappings Section
+        mappings_section = QWidget()
+        mappings_section_layout = QVBoxLayout(mappings_section)
+        mappings_section.setStyleSheet("QWidget { border: 1px solid #ccc; border-radius: 5px; padding: 10px; }")
+        mappings_section_layout.addWidget(QLabel("🗺️ Index Mappings (JSON):"))
+        
+        self.index_mappings_input = QTextEdit()
+        self.index_mappings_input.setFont(QFont("Courier", 10))
+        default_mappings = {
+            "properties": {
+                "title": {
+                    "type": "text",
+                    "analyzer": "standard"
+                },
+                "content": {
+                    "type": "text"
+                },
+                "created_at": {
+                    "type": "date"
+                },
+                "tags": {
+                    "type": "keyword"
+                }
+            }
+        }
+        self.index_mappings_input.setPlainText(json.dumps(default_mappings, indent=2))
+        mappings_section_layout.addWidget(self.index_mappings_input)
+        create_index_layout.addWidget(mappings_section)
+        
+        # Index Aliases Section
+        aliases_section = QWidget()
+        aliases_section_layout = QVBoxLayout(aliases_section)
+        aliases_section.setStyleSheet("QWidget { border: 1px solid #ccc; border-radius: 5px; padding: 10px; }")
+        aliases_section_layout.addWidget(QLabel("🔗 Index Aliases (JSON, optional):"))
+        
+        self.index_aliases_input = QTextEdit()
+        self.index_aliases_input.setFont(QFont("Courier", 10))
+        default_aliases = {
+            "my-alias": {}
+        }
+        self.index_aliases_input.setPlaceholderText(json.dumps(default_aliases, indent=2))
+        aliases_section_layout.addWidget(self.index_aliases_input)
+        create_index_layout.addWidget(aliases_section)
+        
+        # Action Buttons
+        create_buttons_layout = QHBoxLayout()
+        
+        self.load_template_button = QPushButton('📄 Load Template')
+        self.load_template_button.setToolTip('Load a predefined index template')
+        self.load_template_button.clicked.connect(self.load_index_template)
+        
+        self.validate_config_button = QPushButton('✅ Validate Config')
+        self.validate_config_button.setToolTip('Validate JSON configuration without creating the index')
+        self.validate_config_button.clicked.connect(self.validate_index_config)
+        
+        self.create_index_button = QPushButton('🚀 Create Index')
+        self.create_index_button.setToolTip('Create the index with specified configuration')
+        self.create_index_button.clicked.connect(self.execute_create_index)
+        self.create_index_button.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; font-weight: bold; }")
+        
+        for button in [self.load_template_button, self.validate_config_button, self.create_index_button]:
+            button.setSizePolicy(button.sizePolicy().horizontalPolicy(), QSizePolicy.Policy.Fixed)
+
+        create_buttons_layout.addWidget(self.load_template_button)
+        create_buttons_layout.addWidget(self.validate_config_button)
+        create_buttons_layout.addStretch()
+        create_buttons_layout.addWidget(self.create_index_button)
+        
+        create_index_layout.addLayout(create_buttons_layout)
+
         results_widget = QWidget()
         results_layout = QVBoxLayout(results_widget)
         results_layout.setContentsMargins(0, 5, 0, 0)
-        results_layout.addWidget(QLabel("Results:"))
+        
+        # Add display mode toggle
+        display_toggle_layout = QHBoxLayout()
+        display_toggle_layout.addWidget(QLabel("Results:"))
+        display_toggle_layout.addStretch()
+        self.view_mode_combo = QComboBox()
+        self.view_mode_combo.addItems(["JSON Text", "Tree View"])
+        self.view_mode_combo.currentTextChanged.connect(self.toggle_display_mode)
+        display_toggle_layout.addWidget(QLabel("Display Mode:"))
+        display_toggle_layout.addWidget(self.view_mode_combo)
+        results_layout.addLayout(display_toggle_layout)
+        
+        # JSON Text Display
+        self.results_text = QTextEdit()
+        self.results_text.setFont(QFont("Courier", 10))
+        self.results_text.setReadOnly(True)
+        results_layout.addWidget(self.results_text)
+        
+        # Tree View Display (initially hidden)
         self.results_tree = QTreeView()
+        self.results_tree.hide()
         results_layout.addWidget(self.results_tree)
         
         main_splitter.addWidget(self.tabs)
         main_splitter.addWidget(results_widget)
-        main_splitter.setSizes([350, 450])
+        main_splitter.setSizes([500, 780])
         main_layout.addWidget(main_splitter)
         
         self.status_bar = QStatusBar()
@@ -339,10 +548,346 @@ class ElasticsearchViewer(QMainWindow):
             self.populate_tree(response); self.status_bar.showMessage(f"Delete operation successful.", 5000)
             self.doc_id_input.clear(); self.doc_body_input.clear()
         except SimpleEsClientError as e: QMessageBox.critical(self, 'Client Error', str(e))
+    def execute_get_mapping(self):
+        client = self._get_client(); index = self.index_input.text().strip()
+        if not all([client, index]): QMessageBox.warning(self, 'Input Error', 'Host, Port, and Index are required.'); return
+        try:
+            self.status_bar.showMessage(f"Getting mapping for index '{index}'..."); QApplication.processEvents()
+            response = client.get_mapping(index)
+            self.populate_tree(response); self.status_bar.showMessage(f"Get mapping for index '{index}' successful.", 5000)
+        except SimpleEsClientError as e: QMessageBox.critical(self, 'Client Error', str(e))
+    
+    def execute_mapping_operation(self, operation, method='GET', use_index=True):
+        """Execute mapping-related operations with common error handling"""
+        client = self._get_client()
+        if not client:
+            QMessageBox.warning(self, 'Input Error', 'Host and Port are required.')
+            return
+        
+        if use_index:
+            index = self.index_input.text().strip()
+            if not index:
+                QMessageBox.warning(self, 'Input Error', 'Index is required for this operation.')
+                return
+            endpoint = f"{index}/{operation}" if operation else index
+        else:
+            endpoint = operation
+            
+        try:
+            self.status_bar.showMessage(f"Executing {method} {endpoint}...")
+            QApplication.processEvents()
+            
+            if (method == 'HEAD'):
+                # Special handling for HEAD requests
+                response = client.custom_request(method, endpoint)
+                # HEAD requests typically return empty body, so we create a status response
+                response = {"exists": True, "status": response.get("status", 200), "endpoint": endpoint}
+            else:
+                response = client.custom_request(method, endpoint)
+            
+            self.populate_tree(response)
+            self.status_bar.showMessage(f"{method} {endpoint} successful.", 5000)
+        except SimpleEsClientError as e:
+            if method == 'HEAD' and '404' in str(e):
+                # Handle HEAD requests for non-existent resources
+                response = {"exists": False, "status": 404, "endpoint": endpoint}
+                self.populate_tree(response)
+                self.status_bar.showMessage(f"Index does not exist.", 5000)
+            else:
+                QMessageBox.critical(self, 'Client Error', str(e))
+    def execute_custom_request(self):
+        client = self._get_client()
+        if not client:
+            QMessageBox.warning(self, 'Input Error', 'Host and Port are required.')
+            return
+        method = self.http_method_combo.currentText()
+        endpoint = self.http_endpoint_input.text().strip()
+        if not endpoint:
+            QMessageBox.warning(self, 'Input Error', 'Endpoint is required.')
+            return
+        try:
+            body = None
+            if method in ["POST", "PUT", "PATCH"]:
+                body = json.loads(self.custom_body_input.toPlainText())
+            self.status_bar.showMessage(f"Executing custom request '{method} {endpoint}'...")
+            response = client.custom_request(method, endpoint, body)
+            self.populate_tree(response)
+            self.status_bar.showMessage(f"Custom request '{method} {endpoint}' successful.", 5000)
+        except json.JSONDecodeError as e:
+            QMessageBox.critical(self, 'JSON Error', f'Invalid JSON in request body:\n{e}')
+        except SimpleEsClientError as e:
+            QMessageBox.critical(self, 'Client Error', str(e))
+    def load_index_template(self):
+        """Load predefined templates for different index types"""
+        template_menu = QMenu(self)
+        
+        # Define templates
+        templates = {
+            "Document Store": {
+                "settings": {
+                    "number_of_shards": 1,
+                    "number_of_replicas": 1,
+                    "analysis": {
+                        "analyzer": {
+                            "default": {
+                                "type": "standard"
+                            }
+                        }
+                    }
+                },
+                "mappings": {
+                    "properties": {
+                        "title": {"type": "text", "analyzer": "standard"},
+                        "content": {"type": "text"},
+                        "created_at": {"type": "date"},
+                        "tags": {"type": "keyword"}
+                    }
+                },
+                "aliases": {"documents": {}}
+            },
+            "Log Store": {
+                "settings": {
+                    "number_of_shards": 3,
+                    "number_of_replicas": 0,
+                    "index": {
+                        "refresh_interval": "5s"
+                    }
+                },
+                "mappings": {
+                    "properties": {
+                        "timestamp": {"type": "date"},
+                        "level": {"type": "keyword"},
+                        "message": {"type": "text"},
+                        "source": {"type": "keyword"},
+                        "host": {"type": "keyword"}
+                    }
+                },
+                "aliases": {"logs": {}}
+            },
+            "Time Series": {
+                "settings": {
+                    "number_of_shards": 1,
+                    "number_of_replicas": 1,
+                    "index": {
+                        "sort.field": "timestamp",
+                        "sort.order": "desc"
+                    }
+                },
+                "mappings": {
+                    "properties": {
+                        "timestamp": {"type": "date"},
+                        "metric_name": {"type": "keyword"},
+                        "value": {"type": "double"},
+                        "dimensions": {"type": "object"}
+                    }
+                },
+                "aliases": {"metrics": {}}
+            },
+            "E-commerce": {
+                "settings": {
+                    "number_of_shards": 2,
+                    "number_of_replicas": 1,
+                    "analysis": {
+                        "analyzer": {
+                            "product_analyzer": {
+                                "type": "standard",
+                                "stopwords": "_english_"
+                            }
+                        }
+                    }
+                },
+                "mappings": {
+                    "properties": {
+                        "name": {"type": "text", "analyzer": "product_analyzer"},
+                        "description": {"type": "text"},
+                        "price": {"type": "double"},
+                        "category": {"type": "keyword"},
+                        "brand": {"type": "keyword"},
+                        "in_stock": {"type": "boolean"},
+                        "created_date": {"type": "date"}
+                    }
+                },
+                "aliases": {"products": {}}
+            }
+        }
+        
+        for template_name, template_config in templates.items():
+            action = template_menu.addAction(f"📋 {template_name}")
+            action.triggered.connect(lambda checked, config=template_config: self.apply_template(config))
+        
+        # Show menu at button position
+        template_menu.exec(self.load_template_button.mapToGlobal(self.load_template_button.rect().bottomLeft()))
+
+    def apply_template(self, template_config):
+        """Apply a template configuration to the form fields"""
+        try:
+            # Update shards and replicas
+            settings = template_config.get("settings", {})
+            self.shards_input.setText(str(settings.get("number_of_shards", 1)))
+            self.replicas_input.setText(str(settings.get("number_of_replicas", 1)))
+            
+            # Update settings (remove shards/replicas as they're handled separately)
+            settings_copy = settings.copy()
+            settings_copy.pop("number_of_shards", None)
+            settings_copy.pop("number_of_replicas", None)
+            self.index_settings_input.setPlainText(json.dumps(settings_copy, indent=2))
+            
+            # Update mappings
+            mappings = template_config.get("mappings", {})
+            self.index_mappings_input.setPlainText(json.dumps(mappings, indent=2))
+            
+            # Update aliases
+            aliases = template_config.get("aliases", {})
+            self.index_aliases_input.setPlainText(json.dumps(aliases, indent=2))
+            
+            self.status_bar.showMessage("Template loaded successfully", 3000)
+        except Exception as e:
+            QMessageBox.critical(self, 'Template Error', f'Failed to load template:\n{e}')
+
+    def validate_index_config(self):
+        """Validate the JSON configuration without creating the index"""
+        try:
+            # Validate index name
+            index_name = self.new_index_name_input.text().strip()
+            if not index_name:
+                QMessageBox.warning(self, 'Validation Error', 'Index name is required.')
+                return
+            
+            # Validate shards and replicas
+            try:
+                shards = int(self.shards_input.text())
+                replicas = int(self.replicas_input.text())
+                if shards < 1 or replicas < 0:
+                    QMessageBox.warning(self, 'Validation Error', 'Shards must be >= 1, replicas must be >= 0.')
+                    return
+            except ValueError:
+                QMessageBox.warning(self, 'Validation Error', 'Shards and replicas must be valid integers.')
+                return
+            
+            # Validate JSON fields
+            settings_text = self.index_settings_input.toPlainText().strip()
+            if settings_text:
+                json.loads(settings_text)
+            
+            mappings_text = self.index_mappings_input.toPlainText().strip()
+            if mappings_text:
+                json.loads(mappings_text)
+            
+            aliases_text = self.index_aliases_input.toPlainText().strip()
+            if aliases_text:
+                json.loads(aliases_text)
+            
+            QMessageBox.information(self, 'Validation Success', 'All configuration is valid! ✅')
+            self.status_bar.showMessage("Configuration validated successfully", 3000)
+            
+        except json.JSONDecodeError as e:
+            QMessageBox.critical(self, 'JSON Validation Error', f'Invalid JSON:\n{e}')
+        except Exception as e:
+            QMessageBox.critical(self, 'Validation Error', f'Validation failed:\n{e}')
+
+    def execute_create_index(self):
+        """Create the index with the specified configuration"""
+        client = self._get_client()
+        if not client:
+            QMessageBox.warning(self, 'Input Error', 'Host and Port are required.')
+            return
+        
+        try:
+            # Get and validate index name
+            index_name = self.new_index_name_input.text().strip()
+            if not index_name:
+                QMessageBox.warning(self, 'Input Error', 'Index name is required.')
+                return
+            
+            # Build the index configuration
+            index_config = {}
+            
+            # Settings section
+            settings = {}
+            
+            # Add shards and replicas
+            try:
+                shards = int(self.shards_input.text())
+                replicas = int(self.replicas_input.text())
+                if shards < 1 or replicas < 0:
+                    QMessageBox.warning(self, 'Input Error', 'Shards must be >= 1, replicas must be >= 0.')
+                    return
+                settings["number_of_shards"] = shards
+                settings["number_of_replicas"] = replicas
+            except ValueError:
+                QMessageBox.warning(self, 'Input Error', 'Shards and replicas must be valid integers.')
+                return
+            
+            # Add custom settings
+            settings_text = self.index_settings_input.toPlainText().strip()
+            if settings_text:
+                custom_settings = json.loads(settings_text)
+                settings.update(custom_settings)
+            
+            index_config["settings"] = settings
+            
+            # Mappings section
+            mappings_text = self.index_mappings_input.toPlainText().strip()
+            if mappings_text:
+                mappings = json.loads(mappings_text)
+                index_config["mappings"] = mappings
+            
+            # Aliases section
+            aliases_text = self.index_aliases_input.toPlainText().strip()
+            if aliases_text:
+                aliases = json.loads(aliases_text)
+                index_config["aliases"] = aliases
+            
+            # Confirm creation
+            confirm = QMessageBox.question(
+                self, "Confirm Index Creation", 
+                f"Are you sure you want to create index '{index_name}'?\n\n"
+                f"Shards: {shards}, Replicas: {replicas}\n"
+                f"This action cannot be undone.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            
+            if confirm == QMessageBox.StandardButton.No:
+                return
+            
+            # Create the index
+            self.status_bar.showMessage(f"Creating index '{index_name}'...")
+            QApplication.processEvents()
+            
+            response = client.custom_request("PUT", index_name, index_config)
+            
+            # Update the main index field with the newly created index
+            self.index_input.setText(index_name)
+            
+            self.populate_tree(response)
+            self.status_bar.showMessage(f"Index '{index_name}' created successfully!", 5000)
+            
+            QMessageBox.information(self, 'Success', f"Index '{index_name}' has been created successfully! 🎉")
+            
+        except json.JSONDecodeError as e:
+            QMessageBox.critical(self, 'JSON Error', f'Invalid JSON in configuration:\n{e}')
+        except SimpleEsClientError as e:
+            QMessageBox.critical(self, 'Creation Error', f'Failed to create index:\n{str(e)}')
+        except Exception as e:
+            QMessageBox.critical(self, 'Unexpected Error', f'An unexpected error occurred:\n{e}')
     def populate_tree(self, data):
         model = QStandardItemModel(); model.setHorizontalHeaderLabels(['Key', 'Value'])
         self.results_tree.setModel(model); root_item = model.invisibleRootItem()
-        self._populate_tree_model(data, root_item); self.results_tree.expandToDepth(2)
+        
+        # Handle _cat API responses that return plain text
+        if isinstance(data, dict) and 'text_response' in data:
+            # Display formatted text response
+            formatted_text = data['text_response']
+            self.results_text.setPlainText(formatted_text)
+            
+            # Also create a tree view for the metadata
+            self._populate_tree_model(data, root_item)
+        else:
+            # Normal JSON response handling
+            self._populate_tree_model(data, root_item)
+            self.results_text.setPlainText(json.dumps(data, indent=2))
+        
+        self.results_tree.expandToDepth(2)
     def _populate_tree_model(self, data, parent_item):
         if isinstance(data, dict):
             for key, value in data.items():
@@ -358,6 +903,87 @@ class ElasticsearchViewer(QMainWindow):
                 parent_item.appendRow([index_item, value_item])
                 if isinstance(value, (dict, list)): self._populate_tree_model(value, index_item)
                 else: value_item.setText(str(value))
+    def toggle_display_mode(self, mode):
+        if mode == "JSON Text":
+            self.results_tree.hide()
+            self.results_text.show()
+        else:
+            self.results_text.hide()
+            self.results_tree.show()
+
+    def populate_quick_query_tree(self, model):
+        root_item = model.invisibleRootItem()
+
+        # Cluster Operations
+        cluster_category = QStandardItem("🌐 Cluster")
+        cluster_category.setEditable(False)
+        cluster_category.setSelectable(False)
+        root_item.appendRow(cluster_category)
+        
+        queries_cluster = {
+            "Health": {"endpoint": "_cluster/health", "method": "GET", "use_index": False},
+            "Stats": {"endpoint": "_cluster/stats", "method": "GET", "use_index": False},
+            "Settings": {"endpoint": "_cluster/settings", "method": "GET", "use_index": False},
+            "Pending Tasks": {"endpoint": "_cluster/pending_tasks", "method": "GET", "use_index": False},
+        }
+        for name, data in queries_cluster.items():
+            item = QStandardItem(name)
+            item.setData(data, Qt.ItemDataRole.UserRole)
+            item.setEditable(False)
+            cluster_category.appendRow(item)
+
+        # Index Operations
+        index_category = QStandardItem("📄 Indices")
+        index_category.setEditable(False)
+        index_category.setSelectable(False)
+        root_item.appendRow(index_category)
+
+        queries_indices = {
+            "List Indices (cat)": {"endpoint": "_cat/indices?v&s=index", "method": "GET", "use_index": False},
+            "List All Mappings": {"endpoint": "_mapping", "method": "GET", "use_index": False},
+            "List All Settings": {"endpoint": "_settings", "method": "GET", "use_index": False},
+            "List All Aliases": {"endpoint": "_aliases", "method": "GET", "use_index": False},
+        }
+        for name, data in queries_indices.items():
+            item = QStandardItem(name)
+            item.setData(data, Qt.ItemDataRole.UserRole)
+            item.setEditable(False)
+            index_category.appendRow(item)
+
+        # Current Index Operations
+        current_index_category = QStandardItem("📝 Current Index")
+        current_index_category.setEditable(False)
+        current_index_category.setSelectable(False)
+        root_item.appendRow(current_index_category)
+
+        queries_current_index = {
+            "Get Mapping": {"endpoint": "_mapping", "method": "GET", "use_index": True},
+            "Get Settings": {"endpoint": "_settings", "method": "GET", "use_index": True},
+            "Stats": {"endpoint": "_stats", "method": "GET", "use_index": True},
+            "Check Exists": {"endpoint": "", "method": "HEAD", "use_index": True},
+            "Open Index": {"endpoint": "_open", "method": "POST", "use_index": True},
+            "Close Index": {"endpoint": "_close", "method": "POST", "use_index": True},
+            "Refresh Index": {"endpoint": "_refresh", "method": "POST", "use_index": True},
+            "Force Merge": {"endpoint": "_forcemerge", "method": "POST", "use_index": True},
+            "Cache Clear": {"endpoint": "_cache/clear", "method": "POST", "use_index": True},
+        }
+        for name, data in queries_current_index.items():
+            item = QStandardItem(name)
+            item.setData(data, Qt.ItemDataRole.UserRole)
+            item.setEditable(False)
+            current_index_category.appendRow(item)
+
+    def execute_quick_query(self, index):
+        item = self.quick_query_tree.model().itemFromIndex(index)
+        if not item or not item.data(Qt.ItemDataRole.UserRole):
+            return # Not a query item
+
+        query_data = item.data(Qt.ItemDataRole.UserRole)
+        self.execute_mapping_operation(
+            operation=query_data["endpoint"],
+            method=query_data["method"],
+            use_index=query_data["use_index"]
+        )
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
