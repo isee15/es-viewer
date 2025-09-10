@@ -7,7 +7,8 @@ Elasticsearch ES可视化客户端工具
 
 This tool is a self-contained desktop application built with Python and PyQt6. It provides a user-friendly interface for performing common Elasticsearch operations like searching, creating, reading, updating, and deleting documents. It is designed to be minimal and portable, relying only on the `requests` library for communication with Elasticsearch, with no dependency on the official `elasticsearch-py` client.
 
-<img width="1800" height="1053" alt="image" src="https://github.com/user-attachments/assets/bc0f144a-ac04-4697-9c6f-22ccff585d0a" />
+
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/743b6d3d-63a3-4526-80f2-5b274e982485" />
 
 *(Note: Screenshot shows an earlier version; the final version includes more features like CRUD tabs and HTTPS options.)*
 
