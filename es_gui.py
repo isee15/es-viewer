@@ -111,6 +111,7 @@ class ElasticsearchViewer(QMainWindow):
     def __init__(self):
         super().__init__()
         self.es_client = None
+        self.connections = []
         self.init_ui()
         self.load_settings()
 
@@ -127,6 +128,20 @@ class ElasticsearchViewer(QMainWindow):
         connection_group = QWidget()
         connection_layout = QFormLayout(connection_group)
         connection_layout.setContentsMargins(0, 5, 0, 5)
+
+        # --- Connection Management ---
+        connection_management_layout = QHBoxLayout()
+        self.connection_combo = QComboBox()
+        self.connection_combo.setEditable(True)
+        self.connection_combo.setPlaceholderText("Enter new connection name or select existing")
+        self.save_connection_button = QPushButton("💾 Save")
+        self.delete_connection_button = QPushButton("🗑️ Delete")
+        connection_management_layout.addWidget(QLabel("Connection:"))
+        connection_management_layout.addWidget(self.connection_combo)
+        connection_management_layout.addWidget(self.save_connection_button)
+        connection_management_layout.addWidget(self.delete_connection_button)
+        connection_layout.addRow(connection_management_layout)
+
         self.host_input = QLineEdit()
         self.port_input = QLineEdit()
         self.index_input = QLineEdit()
@@ -155,6 +170,9 @@ class ElasticsearchViewer(QMainWindow):
 
         self.auth_checkbox.toggled.connect(self.toggle_auth_fields)
         self.https_checkbox.toggled.connect(self.toggle_ssl_verify_option)
+        self.connection_combo.activated.connect(self.load_selected_connection)
+        self.save_connection_button.clicked.connect(self.save_connection)
+        self.delete_connection_button.clicked.connect(self.delete_connection)
 
         main_layout.addWidget(connection_group)
         
@@ -448,7 +466,105 @@ class ElasticsearchViewer(QMainWindow):
         if text_to_copy:
             QApplication.clipboard().setText(text_to_copy)
             self.status_bar.showMessage(f"Copied: '{text_to_copy}'", 3000)
-            
+
+    # --- Connection Management Methods ---
+    def load_selected_connection(self, index):
+        """Loads the connection details when a profile is selected from the dropdown."""
+        if index < 0 or index >= len(self.connections):
+            return
+        connection_data = self.connections[index]
+        self.populate_connection_fields(connection_data)
+        self.status_bar.showMessage(f"Loaded connection '{connection_data['name']}'", 3000)
+
+    def populate_connection_fields(self, data):
+        """Fills the UI fields from a connection data dictionary."""
+        self.host_input.setText(data.get("host", "localhost"))
+        self.port_input.setText(data.get("port", "9200"))
+        self.index_input.setText(data.get("index", ""))
+        self.https_checkbox.setChecked(data.get("https_enabled", False))
+        self.verify_ssl_checkbox.setChecked(data.get("verify_ssl", True))
+        self.toggle_ssl_verify_option(self.https_checkbox.isChecked())
+        self.auth_checkbox.setChecked(data.get("auth_enabled", False))
+        self.user_input.setText(data.get("username", ""))
+        self.pass_input.setText(data.get("password", ""))
+        self.toggle_auth_fields(self.auth_checkbox.isChecked())
+
+    def save_connection(self):
+        """Saves the current connection details as a new profile or updates an existing one."""
+        conn_name = self.connection_combo.currentText().strip()
+        if not conn_name:
+            QMessageBox.warning(self, "Save Error", "Connection name cannot be empty.")
+            return
+
+        new_connection = {
+            "name": conn_name,
+            "host": self.host_input.text(),
+            "port": self.port_input.text(),
+            "index": self.index_input.text(),
+            "https_enabled": self.https_checkbox.isChecked(),
+            "verify_ssl": self.verify_ssl_checkbox.isChecked(),
+            "auth_enabled": self.auth_checkbox.isChecked(),
+            "username": self.user_input.text(),
+            "password": self.pass_input.text(),
+        }
+
+        # Find if connection with this name already exists
+        existing_indices = [i for i, conn in enumerate(self.connections) if conn['name'] == conn_name]
+
+        if existing_indices:
+            # Update existing connection
+            self.connections[existing_indices[0]] = new_connection
+            self.status_bar.showMessage(f"Connection '{conn_name}' updated.", 3000)
+        else:
+            # Add new connection
+            self.connections.append(new_connection)
+            self.connection_combo.addItem(conn_name)
+            self.connection_combo.setCurrentText(conn_name)
+            self.status_bar.showMessage(f"Connection '{conn_name}' saved.", 3000)
+        
+        self.save_settings()
+
+    def delete_connection(self):
+        """Deletes the selected connection profile."""
+        conn_name = self.connection_combo.currentText()
+        if not conn_name:
+            QMessageBox.warning(self, "Delete Error", "No connection selected to delete.")
+            return
+
+        confirm = QMessageBox.question(self, "Confirm Delete",
+                                       f"Are you sure you want to delete the connection profile '{conn_name}'?",
+                                       QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if confirm == QMessageBox.StandardButton.No:
+            return
+
+        # Find and remove the connection
+        self.connections = [conn for conn in self.connections if conn['name'] != conn_name]
+        
+        # Refresh the combo box
+        self.connection_combo.clear()
+        self.connection_combo.addItems([conn['name'] for conn in self.connections])
+        
+        # Load first connection or clear fields
+        if self.connections:
+            self.connection_combo.setCurrentIndex(0)
+            self.load_selected_connection(0)
+        else:
+            self.clear_connection_fields()
+
+        self.status_bar.showMessage(f"Connection '{conn_name}' deleted.", 3000)
+        self.save_settings()
+
+    def clear_connection_fields(self):
+        """Clears all connection-related input fields."""
+        self.host_input.clear()
+        self.port_input.clear()
+        self.index_input.clear()
+        self.https_checkbox.setChecked(False)
+        self.auth_checkbox.setChecked(False)
+        self.user_input.clear()
+        self.pass_input.clear()
+        self.connection_combo.setCurrentText("")
+
     # --- Client and Settings Methods ---
     def _get_client(self):
         host = self.host_input.text().strip(); port = self.port_input.text().strip()
@@ -464,31 +580,62 @@ class ElasticsearchViewer(QMainWindow):
         return SimpleEsClient(base_url=base_url, auth=auth_tuple, verify_ssl=verify_ssl)
         
     def save_settings(self):
-        settings = {"host": self.host_input.text(), "port": self.port_input.text(), "index": self.index_input.text(), "https_enabled": self.https_checkbox.isChecked(), "verify_ssl": self.verify_ssl_checkbox.isChecked(), "auth_enabled": self.auth_checkbox.isChecked(), "username": self.user_input.text(), "password": self.pass_input.text(), "query": self.query_input.toPlainText()}
+        current_conn_name = self.connection_combo.currentText()
+        settings = {
+            "connections": self.connections,
+            "current_connection_name": current_conn_name,
+            "query": self.query_input.toPlainText()
+        }
         try:
             with open(CONFIG_FILE, 'w') as f: json.dump(settings, f, indent=4)
-        except IOError: pass
+        except IOError as e:
+            self.status_bar.showMessage(f"Error saving settings: {e}", 5000)
 
     def load_settings(self):
         default_query = {"query": {"match_all": {}}, "size": 10}
         default_update = {"doc": {"field_name": "new_value"}}
+
         if not os.path.exists(CONFIG_FILE):
-            self.host_input.setText("localhost"); self.port_input.setText("9200"); self.index_input.setText("my-index")
+            # Create a default connection for first-time users
+            default_conn = {
+                "name": "default", "host": "localhost", "port": "9200", "index": "my-index",
+                "https_enabled": False, "verify_ssl": True, "auth_enabled": False,
+                "username": "", "password": ""
+            }
+            self.connections = [default_conn]
+            self.connection_combo.addItems([c['name'] for c in self.connections])
+            self.populate_connection_fields(default_conn)
             self.query_input.setText(json.dumps(default_query, indent=2))
             self.doc_body_input.setText(json.dumps(default_update, indent=2))
-            self.verify_ssl_checkbox.setChecked(True)
-            self.toggle_ssl_verify_option(self.https_checkbox.isChecked())
+            self.save_settings()
             return
+
         try:
-            with open(CONFIG_FILE, 'r') as f: settings = json.load(f)
-            self.host_input.setText(settings.get("host", "localhost")); self.port_input.setText(settings.get("port", "9200")); self.index_input.setText(settings.get("index", ""))
-            self.https_checkbox.setChecked(settings.get("https_enabled", False)); self.verify_ssl_checkbox.setChecked(settings.get("verify_ssl", True))
-            self.toggle_ssl_verify_option(self.https_checkbox.isChecked())
-            self.auth_checkbox.setChecked(settings.get("auth_enabled", False))
-            self.user_input.setText(settings.get("username", "")); self.pass_input.setText(settings.get("password", ""))
+            with open(CONFIG_FILE, 'r') as f:
+                settings = json.load(f)
+
+            self.connections = settings.get("connections", [])
+            current_conn_name = settings.get("current_connection_name")
+
+            # Populate UI
+            self.connection_combo.clear()
+            self.connection_combo.addItems([c['name'] for c in self.connections])
+
+            if current_conn_name and any(c['name'] == current_conn_name for c in self.connections):
+                self.connection_combo.setCurrentText(current_conn_name)
+                self.load_selected_connection(self.connection_combo.currentIndex())
+            elif self.connections:
+                self.connection_combo.setCurrentIndex(0)
+                self.load_selected_connection(0)
+            else:
+                self.clear_connection_fields()
+
             self.query_input.setText(settings.get("query", json.dumps(default_query, indent=2)))
             self.doc_body_input.setText(json.dumps(default_update, indent=2))
-        except (IOError, json.JSONDecodeError, KeyError): pass
+
+        except (IOError, json.JSONDecodeError, KeyError) as e:
+            QMessageBox.critical(self, "Load Settings Error", f"Could not load or parse config file: {e}")
+            self.clear_connection_fields()
 
     # --- Slots and Helper Methods ---
     def toggle_ssl_verify_option(self, checked):
