@@ -7,7 +7,8 @@ Elasticsearch ES可视化客户端工具
 
 该工具是使用Python和PyQt6构建的独立桌面应用程序。它提供了一个用户友好的界面，用于执行常见的Elasticsearch操作，如搜索、文档管理、索引创建和API调用。它的设计目标是最小化和便携，仅依赖`requests`库与Elasticsearch通信，不依赖官方的`elasticsearch-py`客户端。
 
-<img width="1280" alt="image" src="https://github.com/user-attachments/assets/408f5039-396a-485a-809a-03212120511d" />
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/743b6d3d-63a3-4526-80f2-5b274e982485" />
+
 
 ---
 
