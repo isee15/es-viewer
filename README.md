@@ -1,7 +1,8 @@
 # PyQt Elasticsearch Viewer
 Elasticsearch ES可视化客户端工具
 
-[下载地址](https://pan.quark.cn/s/ed38a68328eb)
+[下载地址](https://pan.quark.cn/s/05b3ae8648e5)
+
 
 *A simple, lightweight, cross-platform desktop GUI for browsing and managing Elasticsearch clusters.*
 
