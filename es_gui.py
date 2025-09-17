@@ -754,7 +754,7 @@ class ElasticsearchViewer(QMainWindow):
             return
         try:
             body = None
-            if method in ["POST", "PUT", "PATCH"]:
+            if (method in ["POST", "PUT", "PATCH"]):
                 body = json.loads(self.custom_body_input.toPlainText())
             self.status_bar.showMessage(f"Executing custom request '{method} {endpoint}'...")
             response = client.custom_request(method, endpoint, body)
@@ -1032,7 +1032,7 @@ class ElasticsearchViewer(QMainWindow):
         else:
             # Normal JSON response handling
             self._populate_tree_model(data, root_item)
-            self.results_text.setPlainText(json.dumps(data, indent=2))
+            self.results_text.setPlainText(json.dumps(data, indent=2, ensure_ascii=False))
         
         self.results_tree.expandToDepth(2)
     def _populate_tree_model(self, data, parent_item):
