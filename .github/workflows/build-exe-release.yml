@@ -6,6 +6,10 @@ on:
       - 'v*'   # 每次推送 tag，比如 v1.0.0，自动发布 Release
   workflow_dispatch: # 也可以手动触发
 
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -37,5 +41,7 @@ jobs:
         with:
           files: dist/ESViewer.exe
           generate_release_notes: true
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
