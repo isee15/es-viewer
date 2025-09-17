@@ -27,10 +27,15 @@ jobs:
         run: |
           pyinstaller --noconfirm --onefile --windowed --name ESViewer es_gui.py
 
+      - name: List dist directory
+        run: |
+          dir dist
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: dist/es-viewer.exe
+          files: dist/ESViewer.exe
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
