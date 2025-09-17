@@ -21,11 +21,11 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install PyQt6 requests urllib3 pyinstaller
+          pip install PyQt6 requests urllib3 pyinstaller pillow
 
       - name: Build with PyInstaller
         run: |
-          pyinstaller --name ESViewer --onefile --windowed --icon=favicon.ico es_gui.py
+          pyinstaller --noconfirm --onefile --windowed --name ESViewer es_gui.py
 
       - name: Create Release
         uses: softprops/action-gh-release@v2

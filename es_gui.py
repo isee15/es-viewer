@@ -117,7 +117,7 @@ class ElasticsearchViewer(QMainWindow):
 
     def init_ui(self):
         """Initializes the user interface."""
-        self.setWindowTitle('ES Viewer v1.0(by isee15)')
+        self.setWindowTitle('ES Viewer v1.0(by 乖猫记账)')
         self.setGeometry(100, 100, 1280, 720)
         self.setMinimumSize(1024, 600)
         
