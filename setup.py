@@ -6,8 +6,8 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="es-viewer",
-    version="1.2.4",
-    author="isee15",
+    version="1.2.6",
+    author="乖猫记账",
     author_email="meizhitu@gmail.com",
     description="A lightweight, cross-platform desktop GUI for Elasticsearch",
     long_description=long_description,
