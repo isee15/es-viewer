@@ -29,7 +29,7 @@ jobs:
 
       - name: Build with PyInstaller
         run: |
-          pyinstaller --noconfirm --onefile --windowed --name ESViewer es_gui.py
+          pyinstaller --noconfirm --onefile --windowed --icon=favicon.ico --add-data "favicon.ico;." --name ESViewer es_gui.py
 
       - name: List dist directory
         run: |

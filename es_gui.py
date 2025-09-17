@@ -22,11 +22,19 @@ from PyQt6.QtWidgets import (
     QLabel, QLineEdit, QPushButton, QTextEdit, QTreeView, QSplitter,
     QStatusBar, QMessageBox, QCheckBox, QFormLayout, QTabWidget, QMenu, QComboBox, QSizePolicy
 )
-from PyQt6.QtGui import QStandardItemModel, QStandardItem, QFont, QKeySequence, QAction, QShortcut
+from PyQt6.QtGui import QStandardItemModel, QStandardItem, QFont, QKeySequence, QAction, QShortcut, QIcon
 from PyQt6.QtCore import Qt
 
 # --- Config File Path ---
 CONFIG_FILE = Path.home() / ".es_viewer_config.json"
+
+def resource_path(filename: str) -> str:
+    """兼容打包后的资源路径"""
+    if getattr(sys, "frozen", False):
+        base_path = sys._MEIPASS
+    else:
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, filename)
 
 # ==============================================================================
 #  Business Logic Layer: Custom Elasticsearch Client
@@ -1136,6 +1144,7 @@ class ElasticsearchViewer(QMainWindow):
 def main():
     app = QApplication(sys.argv)
     viewer = ElasticsearchViewer()
+    viewer.setWindowIcon(QIcon(resource_path("favicon.ico")))
     viewer.show()
     sys.exit(app.exec())
 
