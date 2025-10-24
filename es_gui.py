@@ -1059,7 +1059,7 @@ class ElasticsearchViewer(QMainWindow):
                 if isinstance(value, (dict, list)): self._populate_tree_model(value, index_item)
                 else: value_item.setText(str(value))
     def toggle_display_mode(self, mode):
-        if mode == "JSON Text":
+        if (mode == "JSON Text"):
             self.results_tree.hide()
             self.results_text.show()
         else:
@@ -1078,9 +1078,11 @@ class ElasticsearchViewer(QMainWindow):
         queries_cluster = {
             "Cluster Health": {"endpoint": "_cluster/health", "method": "GET", "use_index": False},
             "Cluster Stats": {"endpoint": "_cluster/stats", "method": "GET", "use_index": False},
+            "Cluster Settings": {"endpoint": "_cluster/settings", "method": "GET", "use_index": False},
+            "Cluster State": {"endpoint": "_cluster/state", "method": "GET", "use_index": False},
             "Node Stats": {"endpoint": "_nodes/stats", "method": "GET", "use_index": False},
-            "List Nodes": {"endpoint": "_cat/nodes?v", "method": "GET", "use_index": False},
             "Pending Tasks": {"endpoint": "_cluster/pending_tasks", "method": "GET", "use_index": False},
+            "Allocation Explain": {"endpoint": "_cluster/allocation/explain", "method": "GET", "use_index": False},
         }
         for name, data in queries_cluster.items():
             item = QStandardItem(name)
@@ -1088,17 +1090,42 @@ class ElasticsearchViewer(QMainWindow):
             item.setEditable(False)
             cluster_category.appendRow(item)
 
+        # CAT APIs
+        cat_category = QStandardItem("📊 CAT APIs")
+        cat_category.setEditable(False)
+        cat_category.setSelectable(False)
+        root_item.appendRow(cat_category)
+        
+        queries_cat = {
+            "Health": {"endpoint": "_cat/health?v", "method": "GET", "use_index": False},
+            "Nodes": {"endpoint": "_cat/nodes?v", "method": "GET", "use_index": False},
+            "Indices": {"endpoint": "_cat/indices?v&s=index", "method": "GET", "use_index": False},
+            "Shards": {"endpoint": "_cat/shards?v", "method": "GET", "use_index": False},
+            "Allocation": {"endpoint": "_cat/allocation?v", "method": "GET", "use_index": False},
+            "Count": {"endpoint": "_cat/count?v", "method": "GET", "use_index": False},
+            "Segments": {"endpoint": "_cat/segments?v", "method": "GET", "use_index": False},
+            "Templates": {"endpoint": "_cat/templates?v", "method": "GET", "use_index": False},
+            "Thread Pool": {"endpoint": "_cat/thread_pool?v", "method": "GET", "use_index": False},
+            "Master": {"endpoint": "_cat/master?v", "method": "GET", "use_index": False},
+            "Plugins": {"endpoint": "_cat/plugins?v", "method": "GET", "use_index": False},
+        }
+        for name, data in queries_cat.items():
+            item = QStandardItem(name)
+            item.setData(data, Qt.ItemDataRole.UserRole)
+            item.setEditable(False)
+            cat_category.appendRow(item)
+
         # Index Operations
-        index_category = QStandardItem("📄 Indices")
+        index_category = QStandardItem("📄 All Indices")
         index_category.setEditable(False)
         index_category.setSelectable(False)
         root_item.appendRow(index_category)
 
         queries_indices = {
-            "List All Indices": {"endpoint": "_cat/indices?v&s=index", "method": "GET", "use_index": False},
             "List All Mappings": {"endpoint": "_mapping", "method": "GET", "use_index": False},
             "List All Settings": {"endpoint": "_settings", "method": "GET", "use_index": False},
             "List All Aliases": {"endpoint": "_aliases", "method": "GET", "use_index": False},
+            "List All Templates": {"endpoint": "_template", "method": "GET", "use_index": False},
         }
         for name, data in queries_indices.items():
             item = QStandardItem(name)
@@ -1116,10 +1143,13 @@ class ElasticsearchViewer(QMainWindow):
             "Get Mapping": {"endpoint": "_mapping", "method": "GET", "use_index": True},
             "Get Settings": {"endpoint": "_settings", "method": "GET", "use_index": True},
             "Get Stats": {"endpoint": "_stats", "method": "GET", "use_index": True},
+            "Get Aliases": {"endpoint": "_alias", "method": "GET", "use_index": True},
+            "Count Documents": {"endpoint": "_count", "method": "GET", "use_index": True},
             "Check if Exists": {"endpoint": "", "method": "HEAD", "use_index": True},
             "Open Index": {"endpoint": "_open", "method": "POST", "use_index": True},
             "Close Index": {"endpoint": "_close", "method": "POST", "use_index": True},
             "Refresh Index": {"endpoint": "_refresh", "method": "POST", "use_index": True},
+            "Flush Index": {"endpoint": "_flush", "method": "POST", "use_index": True},
             "Force Merge": {"endpoint": "_forcemerge", "method": "POST", "use_index": True},
             "Clear Cache": {"endpoint": "_cache/clear", "method": "POST", "use_index": True},
         }
@@ -1128,6 +1158,22 @@ class ElasticsearchViewer(QMainWindow):
             item.setData(data, Qt.ItemDataRole.UserRole)
             item.setEditable(False)
             current_index_category.appendRow(item)
+
+        # Tasks
+        tasks_category = QStandardItem("⚙️ Tasks")
+        tasks_category.setEditable(False)
+        tasks_category.setSelectable(False)
+        root_item.appendRow(tasks_category)
+        
+        queries_tasks = {
+            "List Tasks": {"endpoint": "_tasks", "method": "GET", "use_index": False},
+            "List Tasks (Detailed)": {"endpoint": "_tasks?detailed=true", "method": "GET", "use_index": False},
+        }
+        for name, data in queries_tasks.items():
+            item = QStandardItem(name)
+            item.setData(data, Qt.ItemDataRole.UserRole)
+            item.setEditable(False)
+            tasks_category.appendRow(item)
 
     def execute_quick_query(self, index):
         item = self.quick_query_tree.model().itemFromIndex(index)
