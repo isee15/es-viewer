@@ -107,6 +107,15 @@ class SimpleEsClient:
         else: return self._make_request("POST", f"{index}/_doc", json=document)
     def update_document(self, index: str, doc_id: str, payload: dict): return self._make_request("POST", f"{index}/_update/{doc_id}", json=payload)
     def delete_document(self, index: str, doc_id: str): return self._make_request("DELETE", f"{index}/_doc/{doc_id}")
+    def sql_query(self, sql: str):
+        """Execute SQL query using Elasticsearch SQL API"""
+        payload = {"query": sql}
+        return self._make_request("POST", "_sql?format=json", json=payload)
+    
+    def sql_translate(self, sql: str):
+        """Translate SQL to Elasticsearch DSL"""
+        payload = {"query": sql}
+        return self._make_request("POST", "_sql/translate", json=payload)
 
 # ==============================================================================
 #  UI Presentation Layer: PyQt Application
@@ -125,7 +134,7 @@ class ElasticsearchViewer(QMainWindow):
 
     def init_ui(self):
         """Initializes the user interface."""
-        self.setWindowTitle('ES Viewer v1.0(by 乖猫记账)')
+        self.setWindowTitle('ES Viewer v1.2.11(by 乖猫记账)')
         self.setGeometry(100, 100, 1280, 720)
         self.setMinimumSize(1024, 600)
         
@@ -200,11 +209,29 @@ class ElasticsearchViewer(QMainWindow):
         # ================= Search Tab =================
         search_layout = QVBoxLayout(self.tab_search)
         search_layout.setContentsMargins(10, 10, 10, 10)
+        
+        # Add query mode selector
+        query_mode_layout = QHBoxLayout()
+        query_mode_layout.addWidget(QLabel("<b>Query Mode:</b>"))
+        self.query_mode_combo = QComboBox()
+        self.query_mode_combo.addItems(["DSL Query", "SQL Query"])
+        self.query_mode_combo.currentTextChanged.connect(self.on_query_mode_changed)
+        query_mode_layout.addWidget(self.query_mode_combo)
+        
+        self.translate_sql_button = QPushButton("🔄 Translate to DSL")
+        self.translate_sql_button.setToolTip("Convert SQL query to Elasticsearch DSL")
+        self.translate_sql_button.clicked.connect(self.translate_sql_to_dsl)
+        self.translate_sql_button.hide()  # Hidden by default, shown in SQL mode
+        query_mode_layout.addWidget(self.translate_sql_button)
+        query_mode_layout.addStretch()
+        search_layout.addLayout(query_mode_layout)
+        
         search_layout.addWidget(QLabel("<b>Query DSL</b>"))
         self.query_input = QTextEdit()
         self.query_input.setFont(QFont("Courier", 10))
         self.query_input.setMinimumHeight(100)
         search_layout.addWidget(self.query_input)
+        
         self.execute_search_button = QPushButton('Search')
         self.execute_search_button.setSizePolicy(self.execute_search_button.sizePolicy().horizontalPolicy(), QSizePolicy.Policy.Fixed)
         self.execute_search_button.clicked.connect(self.execute_search)
@@ -600,7 +627,7 @@ class ElasticsearchViewer(QMainWindow):
             self.status_bar.showMessage(f"Error saving settings: {e}", 5000)
 
     def load_settings(self):
-        default_query = {"query": {"match_all": {}}, "size": 10}
+        default_query = {"query": {"match_all": {}}}
         default_update = {"doc": {"field_name": "new_value"}}
 
         if not os.path.exists(CONFIG_FILE):
@@ -651,16 +678,96 @@ class ElasticsearchViewer(QMainWindow):
     def toggle_auth_fields(self, checked):
         self.user_label.setVisible(checked); self.user_input.setVisible(checked)
         self.pass_label.setVisible(checked); self.pass_input.setVisible(checked)
-    def execute_search(self):
-        client = self._get_client(); index_name = self.index_input.text().strip()
-        if not client or not index_name: QMessageBox.warning(self, 'Input Error', 'Host, Port, and Index are required.'); return
+    
+    def on_query_mode_changed(self, mode):
+        """Handle query mode changes between DSL and SQL"""
+        if mode == "SQL Query":
+            self.translate_sql_button.show()
+            # Update label and placeholder for SQL mode
+            default_sql = "SELECT * FROM my-index LIMIT 10"
+            if self.query_input.toPlainText().strip() == "" or self.query_input.toPlainText().startswith("{"):
+                self.query_input.setPlaceholderText(default_sql)
+        else:
+            self.translate_sql_button.hide()
+            # Update label and placeholder for DSL mode
+            default_dsl = '{"query": {"match_all": {}}, "size": 10}'
+            if self.query_input.toPlainText().strip() == "" or not self.query_input.toPlainText().startswith("{"):
+                self.query_input.setPlaceholderText(default_dsl)
+    
+    def translate_sql_to_dsl(self):
+        """Translate SQL query to Elasticsearch DSL"""
+        client = self._get_client()
+        if not client:
+            QMessageBox.warning(self, 'Input Error', 'Host and Port are required.')
+            return
+        
+        sql_query = self.query_input.toPlainText().strip()
+        if not sql_query:
+            QMessageBox.warning(self, 'Input Error', 'SQL query cannot be empty.')
+            return
+        
         try:
-            query_json = json.loads(self.query_input.toPlainText())
-            self.status_bar.showMessage(f'Executing search on index "{index_name}"...'); QApplication.processEvents()
-            response = client.search(index=index_name, query=query_json)
-            self.populate_tree(response); self.status_bar.showMessage('Search successful. Settings saved.', 5000); self.save_settings()
-        except json.JSONDecodeError as e: QMessageBox.critical(self, 'JSON Error', f'Invalid JSON in query box:\n{e}')
-        except SimpleEsClientError as e: QMessageBox.critical(self, 'Client Error', str(e))
+            self.status_bar.showMessage('Translating SQL to DSL...')
+            QApplication.processEvents()
+            
+            response = client.sql_translate(sql_query)
+            
+            # Extract the DSL query from response
+            if isinstance(response, dict):
+                # The response is the DSL query itself
+                dsl_query = json.dumps(response, indent=2, ensure_ascii=False)
+                self.query_input.setPlainText(dsl_query)
+                self.status_bar.showMessage('SQL translated to DSL successfully.', 5000)
+            else:
+                QMessageBox.warning(self, 'Translation Error', 'Unexpected response format from SQL translate API.')
+                
+        except SimpleEsClientError as e:
+            QMessageBox.critical(self, 'Translation Error', f'Failed to translate SQL:\n{str(e)}')
+    
+    def execute_search(self):
+        client = self._get_client()
+        index_name = self.index_input.text().strip()
+        if not client or not index_name:
+            QMessageBox.warning(self, 'Input Error', 'Host, Port, and Index are required.')
+            return
+        
+        try:
+            query_mode = self.query_mode_combo.currentText()
+            query_text = self.query_input.toPlainText().strip()
+            
+            if not query_text:
+                QMessageBox.warning(self, 'Input Error', 'Query cannot be empty.')
+                return
+            
+            if query_mode == "SQL Query":
+                # Execute SQL query
+                self.status_bar.showMessage(f'Executing SQL query on index "{index_name}"...')
+                QApplication.processEvents()
+                
+                # For SQL queries, we need to use the full SQL including the index
+                # If user's SQL doesn't include FROM clause with index, add it
+                if "FROM" not in query_text.upper():
+                    QMessageBox.warning(self, 'SQL Error', 'SQL query must include a FROM clause with index name.')
+                    return
+                
+                response = client.sql_query(query_text)
+                self.populate_tree(response)
+                self.status_bar.showMessage('SQL query executed successfully. Settings saved.', 5000)
+            else:
+                # Execute DSL query
+                query_json = json.loads(query_text)
+                self.status_bar.showMessage(f'Executing search on index "{index_name}"...')
+                QApplication.processEvents()
+                response = client.search(index=index_name, query=query_json)
+                self.populate_tree(response)
+                self.status_bar.showMessage('Search successful. Settings saved.', 5000)
+            
+            self.save_settings()
+            
+        except json.JSONDecodeError as e:
+            QMessageBox.critical(self, 'JSON Error', f'Invalid JSON in query box:\n{e}')
+        except SimpleEsClientError as e:
+            QMessageBox.critical(self, 'Client Error', str(e))
     def execute_get(self):
         client = self._get_client(); index = self.index_input.text().strip(); doc_id = self.doc_id_input.text().strip()
         if not all([client, index, doc_id]): QMessageBox.warning(self, 'Input Error', 'Host, Port, Index and Document ID are required.'); return
@@ -1186,6 +1293,32 @@ class ElasticsearchViewer(QMainWindow):
             method=query_data["method"],
             use_index=query_data["use_index"]
         )
+
+    def on_query_mode_changed(self, mode):
+        if mode == "SQL Query":
+            self.translate_sql_button.show()
+            self.query_input.setPlaceholderText("SELECT * FROM my-index WHERE ...")
+        else:
+            self.translate_sql_button.hide()
+            self.query_input.setPlaceholderText('{\n  "query": {\n    "match_all": {}\n  }\n}')
+
+    def translate_sql_to_dsl(self):
+        client = self._get_client()
+        if not client:
+            QMessageBox.warning(self, 'Input Error', 'Host and Port are required.')
+            return
+        sql_query = self.query_input.toPlainText().strip()
+        if not sql_query:
+            QMessageBox.warning(self, 'Input Error', 'SQL query cannot be empty.')
+            return
+        try:
+            self.status_bar.showMessage('Translating SQL to DSL...')
+            response = client.sql_translate(sql_query)
+            dsl_query = json.dumps(response, indent=2, ensure_ascii=False)
+            self.query_input.setPlainText(dsl_query)
+            self.status_bar.showMessage('SQL translated to DSL successfully.', 5000)
+        except SimpleEsClientError as e:
+            QMessageBox.critical(self, 'Client Error', str(e))
 
 def main():
     app = QApplication(sys.argv)
